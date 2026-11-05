@@ -1,0 +1,44 @@
+name: DSH Matrix limited timeline regression
+
+on:
+  push:
+    branches: ['ci/dsh-matrix-gap']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bridge-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m unittest discover -s deepseek-harness/tests -p 'test_*.py' -v
+      - run: node --test deepseek-harness/tests/*.test.mjs
+  tuwunel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the project's Tuwunel image
+        run: |
+          docker run -d --rm --name matrix-gap-test -p 127.0.0.1:6167:6167 \
+            -e CONDUWUIT_SERVER_NAME=matrix.local \
+            -e CONDUWUIT_DATABASE_PATH=/tmp/tuwunel \
+            -e CONDUWUIT_ADDRESS=0.0.0.0 -e CONDUWUIT_PORT=6167 \
+            -e CONDUWUIT_ALLOW_REGISTRATION=true \
+            -e CONDUWUIT_REGISTRATION_TOKEN=local-ci-registration-only \
+            -e CONDUWUIT_ALLOW_FEDERATION=false \
+            higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/tuwunel:20260216
+      - name: Recover a limited timeline from Tuwunel
+        run: python3 ci-validation/tuwunel-smoke.py
+      - name: Tuwunel logs on failure
+        if: failure()
+        run: docker logs matrix-gap-test || true
